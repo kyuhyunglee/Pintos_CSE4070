@@ -2,8 +2,10 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
 #include "threads/init.h"
+#include "userprog/process.h"
+#include "devices/input.h"
+#include "lib/kernel/console.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -13,12 +15,90 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+void halt(void) {
+  shutdown_power_off();
+}
+
+void exit(int status) {
+  struct thread *cur = thread_current();
+  printf("%s: exit(%d)\n", cur->name, status);
+  cur->exit_status = status;
+  thread_exit();
+}
+
+tid_t exec(const char *file) {
+  return process_execute(file);
+}
+
+int wait(tid_t pid) {
+  return process_wait(pid);
+}
+
+int read(int fd, void *buffer, unsigned int size) {
+  if (fd == 0) {
+    unsigned i;
+    for (i = 0; i < size; i++) {
+      ((char *)buffer)[i] = input_getc();
+    }
+    return size;
+  }
+  else return -1;
+}
+
+int write(int fd, const void *buffer, unsigned int size) {
+  if (fd == 1) {
+    putbuf(buffer, size);
+    return size;
+  }
+  else return -1;
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  printf ("system call!\n");
+  ASSERT (intr_get_level () == INTR_ON);
+  switch (*(uintptr_t *)f->esp) {
+    case SYS_HALT:
+      halt();
+      break;
+    case SYS_EXIT:
+      // esp + 4 는 다음으로 실행될 process의 주소이다
+      exit(*(int *)(f->esp + 4));
+      break;
+    case SYS_EXEC:
+      f->eax = exec((const char *)(*(uintptr_t *)(f->esp + 4)));
+      break;
+    case SYS_WAIT:
+      f->eax = wait((tid_t)(*(uintptr_t *)(f->esp + 4)));
+      break;
+    case SYS_CREATE:
+      break;
+    case SYS_REMOVE:
+      break;
+    case SYS_OPEN:
+      break;
+    case SYS_FILESIZE:
+      break;
+    case SYS_READ:
+      f->eax = read((int)(*(uintptr_t *)(f->esp + 4)),
+                    (void *)(*(uintptr_t *)(f->esp + 8)),
+                    (unsigned int)(*(uintptr_t *)(f->esp + 12)));
+      break;
+    case SYS_WRITE:
+      f->eax = write((int)(*(uintptr_t *)(f->esp + 4)),
+                     (const void *)(*(uintptr_t *)(f->esp + 8)),
+                     (unsigned int)(*(uintptr_t *)(f->esp + 12)));
+      break;
+    case SYS_SEEK:
+      break;
+    case SYS_TELL:
+      break;
+    case SYS_CLOSE:
+      break;
+  }
   // 추후 process_wait 구현, process_exit 구현 시에 주석 해제
   // 지금은 system call이 호출되면 바로 종료
-  thread_exit ();
+  printf ("system call! %d\n", *(uintptr_t *)f->esp);
+  //thread_exit ();
   //shutdown_power_off ();
 }

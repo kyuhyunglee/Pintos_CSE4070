@@ -89,7 +89,7 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
   // 2초간 대기 후 리턴
-  timer_sleep(2000);
+  timer_sleep(200);
   return -1;
 }
 
