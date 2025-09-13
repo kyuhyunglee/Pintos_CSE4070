@@ -88,7 +88,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  // 근본적인 해결책은 아님
   thread_yield();
+  timer_sleep(100); // 100 ticks = 1 second
   return -1;
 }
 
