@@ -88,8 +88,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  //2초 대기
-  timer_msleep(2000);
+  // 2초간 대기 후 리턴
+  timer_sleep(2000);
   return -1;
 }
 
