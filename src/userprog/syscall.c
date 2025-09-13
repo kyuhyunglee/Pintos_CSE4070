@@ -37,9 +37,11 @@ int wait(tid_t pid) {
 int read(int fd, void *buffer, unsigned int size) {
   if (fd == 0) {
     unsigned i;
+    printf("read process\n");
     for (i = 0; i < size; i++) {
       ((char *)buffer)[i] = input_getc();
     }
+    printf("read %d bytes\n", size);
     return size;
   }
   else return -1;
@@ -47,6 +49,7 @@ int read(int fd, void *buffer, unsigned int size) {
 
 int write(int fd, const void *buffer, unsigned int size) {
   if (fd == 1) {
+    //printf("[DEBUG] syscall_write: fd=%d, size=%u\n", fd, size);
     putbuf(buffer, size);
     return size;
   }
@@ -98,7 +101,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   }
   // 추후 process_wait 구현, process_exit 구현 시에 주석 해제
   // 지금은 system call이 호출되면 바로 종료
-  printf ("system call! %d\n", *(uintptr_t *)f->esp);
+  //printf ("system call! %d\n", *(uintptr_t *)f->esp);
   //thread_exit ();
   //shutdown_power_off ();
 }

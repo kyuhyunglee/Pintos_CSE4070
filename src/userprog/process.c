@@ -88,8 +88,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  // 2초간 대기 후 리턴
-  timer_sleep(200);
+  thread_yield();
   return -1;
 }
 
@@ -325,10 +324,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   for(token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
     if (argc < 63) {
       argv[argc++] = token;
-      //printf("token %s\n", token);
+      printf("token %s\n", token);
     }
   }
-  //printf("argc : %d\n", argc);
+  printf("argc : %d\n", argc);
 
   // argv를 역순으로 stack에 저장
   char *argv_user_adder[64];
@@ -337,13 +336,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
     *esp -= token_len;
     memcpy(*esp, argv[i], token_len);
     argv_user_adder[i] = *esp; // argument의 user virtual address 저장
-    //printf("file name token %s\n", *esp);
+    printf("file name token %s\n", *esp);
   }
 
   // 32bit word align
   while ((uintptr_t)*esp % 4 != 0) {
     *esp -= 1;
-    *(uint32_t *)(*esp) = 0; 
+    *(uint8_t *)(*esp) = 0; 
   }
 
   // argv_user_adder를 stack에 저장
@@ -358,9 +357,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *esp -= sizeof(char **);
   *(char ***)(*esp) = argv_ptr; // argv의 주소 저장
   *esp -= sizeof(int);
-  *(int *)(*esp) = argc;
+  *(int *)(*esp) = argc; // argc 저장
   *esp -= sizeof(void *);
-  *(void **)(*esp) = NULL;
+  *(void **)(*esp) = NULL; // return address 0
 
   //디버깅용 hex_dump
   printf("hex dump in load\n\n");
