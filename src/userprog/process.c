@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -90,7 +91,7 @@ process_wait (tid_t child_tid UNUSED)
 {
   // 근본적인 해결책은 아님
   thread_yield();
-  timer_sleep(100); // 100 ticks = 1 second
+  timer_msleep(2000);
   return -1;
 }
 
