@@ -56,6 +56,19 @@ int write(int fd, const void *buffer, unsigned int size) {
   else return -1;
 }
 
+int fibonacci(int n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+int max_of_four_int(int a, int b, int c, int d) {
+  int max = a;
+  if (b > max) max = b;
+  if (c > max) max = c;
+  if (d > max) max = d;
+  return max;
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -97,6 +110,15 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_TELL:
       break;
     case SYS_CLOSE:
+      break;
+    case SYS_FIBONACCI:
+      f->eax = fibonacci((int)(*(uintptr_t *)(f->esp + 4)));
+      break;
+    case SYS_MAX_OF_FOUR_INT:
+      f->eax = max_of_four_int((int)(*(uintptr_t *)(f->esp + 4)),
+                               (int)(*(uintptr_t *)(f->esp + 8)),
+                               (int)(*(uintptr_t *)(f->esp + 12)),
+                               (int)(*(uintptr_t *)(f->esp + 16)));
       break;
   }
   // 추후 process_wait 구현, process_exit 구현 시에 주석 해제
