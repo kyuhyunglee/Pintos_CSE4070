@@ -96,6 +96,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    int exit_status;                    /* Process exit status. */
 #endif
 
     /* Owned by thread.c. */
@@ -137,5 +138,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+//struct thread* get_child_process_by_tid(tid_t child_tid);
 
 #endif /* threads/thread.h */
