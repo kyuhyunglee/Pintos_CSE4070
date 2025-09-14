@@ -327,10 +327,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   for(token = strtok_r(file_name_copy, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
     if (argc < 63) {
       argv[argc++] = token;
-      printf("token %s\n", token);
+      //printf("token %s\n", token);
     }
   }
-  printf("argc : %d\n", argc);
+  //printf("argc : %d\n", argc);
 
   // argv를 역순으로 stack에 저장
   char *argv_user_adder[64];
@@ -339,7 +339,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     *esp -= token_len;
     memcpy(*esp, argv[i], token_len);
     argv_user_adder[i] = *esp; // argument의 user virtual address 저장
-    printf("file name token %s\n", *esp);
+    //printf("file name token %s\n", *esp);
   }
 
   // 32bit word align
@@ -365,8 +365,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(void **)(*esp) = NULL; // return address 0
 
   //디버깅용 hex_dump
-  printf("hex dump in load\n\n");
-  hex_dump(*esp, *esp, 100, true);
+  //printf("hex dump in load\n\n");
+  //hex_dump(*esp, *esp, 100, true);
   
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
