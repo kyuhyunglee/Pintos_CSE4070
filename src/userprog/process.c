@@ -41,6 +41,9 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  struct thread *child = get_child_process_by_tid(tid);
+  sema_down(&child->load_sema); // 자식의 load가 끝날 때까지 부모는 대기
+  printf("sema down in execute\n");
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -90,9 +93,22 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
   // 근본적인 해결책은 아님
+  /*
   thread_yield();
   timer_msleep(2000);
-  return -1;
+  */
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  int exit_status;
+
+  struct thread *child_thread = get_child_process_by_tid(child_tid);
+  if (child_thread == NULL) return -1; // 유효하지 않은 tid
+
+  sema_down(&child_thread->exit_sema); // 자식이 exit할 때까지 대기
+  printf("sema down in wait\n");
+  exit_status = child_thread->exit_status;
+  list_remove(&child_thread->child_elem); // 자식 리스트에서 제거
+  return exit_status;
 }
 
 /* Free the current process's resources. */
@@ -105,6 +121,8 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+  sema_up(&cur->exit_sema);
+  printf("sema up in exit\n");
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -230,6 +248,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   char *save_ptr;
   strlcpy(file_name_copy, file_name, sizeof(file_name_copy));
   char *exec_name = strtok_r(file_name_copy, " ", &save_ptr);
+  strlcpy(t->name, exec_name, sizeof(t->name));
 
   /* Open executable file. */
   file = filesys_open (exec_name);
@@ -365,8 +384,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(void **)(*esp) = NULL; // return address 0
 
   //디버깅용 hex_dump
-  //printf("hex dump in load\n\n");
-  //hex_dump(*esp, *esp, 100, true);
+  printf("hex dump in load\n\n");
+  hex_dump(*esp, *esp, 100, true);
   
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -376,6 +395,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  sema_up(&thread_current()->load_sema);
+  printf("sema up in load\n");
   return success;
 }
 
@@ -525,4 +546,20 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+struct thread* get_child_process_by_tid(tid_t child_tid) {
+  intr_disable();
+  struct thread* cur = thread_current();
+  struct list_elem* e;
+
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+    struct thread* child = list_entry(e, struct thread, child_elem);
+    if (child->tid == child_tid) {
+      intr_enable();
+      return child;
+    }
+  }
+  intr_enable();
+  return NULL;
 }

@@ -69,6 +69,18 @@ int max_of_four_int(int a, int b, int c, int d) {
   return max;
 }
 
+/* To-do: 각 sys call case당 해당 주소가 유효한지 검사하는 함수 구현 */
+static void check_user_ptr(const void *ptr) {
+  if (!is_user_vaddr(ptr) || ptr == NULL){
+    printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+  if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
+    printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -78,13 +90,16 @@ syscall_handler (struct intr_frame *f UNUSED)
       halt();
       break;
     case SYS_EXIT:
+      check_user_ptr(f->esp + 4);
       // esp + 4 는 다음으로 실행될 process의 주소이다
       exit(*(int *)(f->esp + 4));
       break;
     case SYS_EXEC:
+      check_user_ptr(f->esp + 4);
       f->eax = exec((const char *)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_WAIT:
+      check_user_ptr(f->esp + 4);
       f->eax = wait((tid_t)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_CREATE:
@@ -96,11 +111,17 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_FILESIZE:
       break;
     case SYS_READ:
+      check_user_ptr(f->esp + 4);
+      check_user_ptr(f->esp + 8);
+      check_user_ptr(f->esp + 12);
       f->eax = read((int)(*(uintptr_t *)(f->esp + 4)),
                     (void *)(*(uintptr_t *)(f->esp + 8)),
                     (unsigned int)(*(uintptr_t *)(f->esp + 12)));
       break;
     case SYS_WRITE:
+      check_user_ptr(f->esp + 4);
+      check_user_ptr(f->esp + 8);
+      check_user_ptr(f->esp + 12);
       f->eax = write((int)(*(uintptr_t *)(f->esp + 4)),
                      (const void *)(*(uintptr_t *)(f->esp + 8)),
                      (unsigned int)(*(uintptr_t *)(f->esp + 12)));

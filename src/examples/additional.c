@@ -13,8 +13,7 @@ int main (int argc, char **argv)
     int c = atoi(argv[3]);
     int d = atoi(argv[4]);
 
-    printf("Fibbonacci of %d: %d\n", a, fibonacci(a));
-    printf("Max of four integers (%d, %d, %d, %d): %d\n", a, b, c, d, max_of_four_int(a, b, c, d));
+    printf("%d %d\n",fibonacci(a), max_of_four_int(a, b, c, d));
 
     return EXIT_SUCCESS;
 }
