@@ -27,6 +27,7 @@ void exit(int status) {
 }
 
 tid_t exec(const char *file) {
+  if (file==NULL) return -1;
   return process_execute(file);
 }
 

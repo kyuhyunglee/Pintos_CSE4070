@@ -50,6 +50,7 @@ process_execute (const char *file_name)
   struct thread *child = get_child_process_by_tid(tid);
   sema_down(&child->load_sema); // 자식의 load가 끝날 때까지 부모는 대기
   //printf("sema down in execute\n");
+  if (child->load_success == false) tid = -1; // load 실패 시 -1 반환
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -70,13 +71,14 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  thread_current()->load_success = success;
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success){
-    thread_current()->exit_status = -1;
     thread_exit ();
   }
+ 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
