@@ -39,11 +39,17 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Parse the file name to get the executable name only */
+  char file_name_copy[64];
+  char *save_ptr;
+  strlcpy(file_name_copy, file_name, sizeof(file_name_copy));
+  char *exec_name = strtok_r(file_name_copy, " ", &save_ptr);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, fn_copy);
   struct thread *child = get_child_process_by_tid(tid);
   sema_down(&child->load_sema); // 자식의 load가 끝날 때까지 부모는 대기
-  printf("sema down in execute\n");
+  //printf("sema down in execute\n");
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -67,9 +73,10 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+  if (!success){
+    thread_current()->exit_status = -1;
     thread_exit ();
-
+  }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -105,7 +112,7 @@ process_wait (tid_t child_tid UNUSED)
   if (child_thread == NULL) return -1; // 유효하지 않은 tid
 
   sema_down(&child_thread->exit_sema); // 자식이 exit할 때까지 대기
-  printf("sema down in wait\n");
+  //printf("sema down in wait\n");
   exit_status = child_thread->exit_status;
   list_remove(&child_thread->child_elem); // 자식 리스트에서 제거
   return exit_status;
@@ -122,7 +129,7 @@ process_exit (void)
      to the kernel-only page directory. */
   pd = cur->pagedir;
   sema_up(&cur->exit_sema);
-  printf("sema up in exit\n");
+  //printf("sema up in exit\n");
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -384,8 +391,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(void **)(*esp) = NULL; // return address 0
 
   //디버깅용 hex_dump
-  printf("hex dump in load\n\n");
-  hex_dump(*esp, *esp, 100, true);
+  //printf("hex dump in load\n\n");
+  //hex_dump(*esp, *esp, 100, true);
   
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -396,7 +403,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   sema_up(&thread_current()->load_sema);
-  printf("sema up in load\n");
+  //printf("sema up in load\n");
   return success;
 }
 

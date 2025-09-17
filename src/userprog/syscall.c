@@ -72,11 +72,15 @@ int max_of_four_int(int a, int b, int c, int d) {
 /* To-do: 각 sys call case당 해당 주소가 유효한지 검사하는 함수 구현 */
 static void check_user_ptr(const void *ptr) {
   if (!is_user_vaddr(ptr) || ptr == NULL){
-    printf("invalid user pointer %p\n", ptr);
+    //printf("invalid user pointer %p\n", ptr);
     exit(-1);
   }
   if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
-    printf("invalid user pointer %p\n", ptr);
+    //printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+  if (ptr >= PHYS_BASE) {
+    //printf("invalid user pointer %p\n", ptr);
     exit(-1);
   }
 }
@@ -85,6 +89,7 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   ASSERT (intr_get_level () == INTR_ON);
+  check_user_ptr(f->esp);
   switch (*(uintptr_t *)f->esp) {
     case SYS_HALT:
       halt();
@@ -143,8 +148,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
   }
   // 추후 process_wait 구현, process_exit 구현 시에 주석 해제
-  // 지금은 system call이 호출되면 바로 종료
   //printf ("system call! %d\n", *(uintptr_t *)f->esp);
   //thread_exit ();
-  //shutdown_power_off ();
 }
