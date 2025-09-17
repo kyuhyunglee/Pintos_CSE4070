@@ -50,7 +50,7 @@ process_execute (const char *file_name)
   struct thread *child = get_child_process_by_tid(tid);
   sema_down(&child->load_sema); // 자식의 load가 끝날 때까지 부모는 대기
   //printf("sema down in execute\n");
-  if (child->load_success == false) tid = -1; // load 실패 시 -1 반환
+  if (child->load_success == false) return -1;
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;

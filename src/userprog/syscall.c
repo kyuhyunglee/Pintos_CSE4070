@@ -15,6 +15,22 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* To-do: 각 sys call case당 해당 주소가 유효한지 검사하는 함수 구현 */
+static void check_user_ptr(const void *ptr) {
+  if (!is_user_vaddr(ptr) || ptr == NULL){
+    //printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+  if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
+    //printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+  if (ptr >= PHYS_BASE) {
+    //printf("invalid user pointer %p\n", ptr);
+    exit(-1);
+  }
+}
+
 void halt(void) {
   shutdown_power_off();
 }
@@ -27,7 +43,12 @@ void exit(int status) {
 }
 
 tid_t exec(const char *file) {
+  check_user_ptr(file); // 왠지 모르지만 이게 있어야 exec_bad_ptr 통과 아래 iteration의 경우에는 왜 안되는지 모르겠음
   if (file==NULL) return -1;
+  // 문자열 전체가 유효한지 검사
+  for(int i=0; i<strlen(file); i++){
+    check_user_ptr(file + i);
+  }
   return process_execute(file);
 }
 
@@ -68,22 +89,6 @@ int max_of_four_int(int a, int b, int c, int d) {
   if (c > max) max = c;
   if (d > max) max = d;
   return max;
-}
-
-/* To-do: 각 sys call case당 해당 주소가 유효한지 검사하는 함수 구현 */
-static void check_user_ptr(const void *ptr) {
-  if (!is_user_vaddr(ptr) || ptr == NULL){
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
-  if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
-  if (ptr >= PHYS_BASE) {
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
 }
 
 static void
