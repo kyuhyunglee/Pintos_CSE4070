@@ -147,6 +147,26 @@ int write(int fd, const void *buffer, unsigned int size) {
   }
 }
 
+void seek(int fd, unsigned position) {
+  if (fd < 3 || fd >= 128) return; // 유효하지 않은 fd
+  struct thread *cur = thread_current();
+  struct file *f = cur->file_descriptor[fd];
+  if (f == NULL){
+    return; // 해당 fd가 열려있지 않음
+  }
+  file_seek(f, position);
+}
+
+unsigned tell(int fd) {
+  if (fd < 3 || fd >= 128) return -1; // 유효하지 않은 fd
+  struct thread *cur = thread_current();
+  struct file *f = cur->file_descriptor[fd];
+  if (f == NULL){
+    return -1; // 해당 fd가 열려있지 않음
+  }
+  return file_tell(f);
+}
+
 int close(int fd) {
   if (fd < 3 || fd >= 128) return -1; // 유효하지 않은 fd
   lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
@@ -232,8 +252,14 @@ syscall_handler (struct intr_frame *f UNUSED)
                      (unsigned int)(*(uintptr_t *)(f->esp + 12)));
       break;
     case SYS_SEEK:
+      check_user_ptr(f->esp + 4);
+      check_user_ptr(f->esp + 8);
+      seek((int)(*(uintptr_t *)(f->esp + 4)),
+           (unsigned int)(*(uintptr_t *)(f->esp + 8)));
       break;
     case SYS_TELL:
+      check_user_ptr(f->esp + 4);
+      f->eax = tell((int)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_CLOSE:
       check_user_ptr(f->esp + 4);
