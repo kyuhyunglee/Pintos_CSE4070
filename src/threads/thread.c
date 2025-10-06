@@ -464,7 +464,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  list_init(&t->file_descriptor);
+  for(int i=0; i<128; i++) t->file_descriptor[i] = NULL; // fd 테이블 초기화 (list_init 안됨)
 
   #ifdef USERPROG
     list_init (&t->children);

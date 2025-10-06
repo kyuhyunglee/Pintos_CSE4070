@@ -67,7 +67,39 @@ bool remove(const char *file) {
   return filesys_remove(file);
 }
 
+int open(const char *file) {
+  if (file==NULL) return -1;
+  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
+  struct file *f = filesys_open(file);
+  if (f == NULL) {
+    lock_release(&file_lock); // 락 해제
+    return -1; // 파일 열기 실패 시 -1 반환
+  }
+  struct thread *cur = thread_current();
+  int fd;
+  for (fd = 3; fd < 128; fd++) { // fd 3~127까지 사용 가능
+    if (cur->file_descriptor[fd] == NULL) {
+      cur->file_descriptor[fd] = f;
+      return fd;
+    }
+  }
+  // 모든 fd가 사용 중인 경우
+  file_close(f);
+  lock_release(&file_lock); // 락 해제
+  return -1;
+}
+
+int filesize(int fd) {
+  if (fd < 3 || fd >= 128) return -1; // 유효하지 않은 fd
+  struct thread *cur = thread_current();
+  struct file *f = cur->file_descriptor[fd];
+  if (f == NULL) return -1; // 해당 fd가 열려있지 않음
+  return file_length(f);
+}
+
 int read(int fd, void *buffer, unsigned int size) {
+  if (fd < 0 || fd >= 128 || fd == 1) return -1;
+  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
   if (fd == 0) {
     unsigned i;
     printf("read process\n");
@@ -75,18 +107,59 @@ int read(int fd, void *buffer, unsigned int size) {
       ((char *)buffer)[i] = input_getc();
     }
     printf("read %d bytes\n", size);
+    lock_release(&file_lock); // 락 해제
     return size;
   }
-  else return -1;
+  // fd가 0이 아닌 경우 implementation 필요
+  else{
+    struct thread *cur = thread_current();
+    struct file *f = cur->file_descriptor[fd];
+    if (f == NULL) {
+      lock_release(&file_lock); // 락 해제
+      return -1; // 해당 fd가 열려있지 않음
+    }
+    int bytes_read = file_read(f, buffer, size);
+    lock_release(&file_lock); // 락 해제
+    return bytes_read;
+  }
 }
 
 int write(int fd, const void *buffer, unsigned int size) {
+  if (fd < 0 || fd >= 128 || fd == 0) return -1;
+  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
   if (fd == 1) {
     //printf("[DEBUG] syscall_write: fd=%d, size=%u\n", fd, size);
     putbuf(buffer, size);
+    lock_release(&file_lock); // 락 해제
     return size;
   }
-  else return -1;
+  // fd가 1이 아닌 경우 implementation 필요
+  else {
+    struct thread *cur = thread_current();
+    struct file *f = cur->file_descriptor[fd];
+    if (f == NULL) {
+      lock_release(&file_lock); // 락 해제
+      return -1; // 해당 fd가 열려있지 않음
+    }
+    int bytes_written = file_write(f, buffer, size);
+    lock_release(&file_lock); // 락 해제
+    return bytes_written;
+  }
+}
+
+int close(int fd) {
+  if (fd < 3 || fd >= 128) return -1; // 유효하지 않은 fd
+  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
+  struct thread *cur = thread_current();
+  struct file *f = cur->file_descriptor[fd];
+  if (f == NULL){
+    lock_release(&file_lock); // 락 해제
+    return -1; // 해당 fd가 열려있지 않음
+  }
+  file_close(f);
+  cur->file_descriptor[fd] = NULL;
+  lock_release(&file_lock); // 락 해제
+  return 0;
 }
 
 int fibonacci(int n) {
@@ -163,6 +236,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_TELL:
       break;
     case SYS_CLOSE:
+      check_user_ptr(f->esp + 4);
+      f->eax = close((int)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_FIBONACCI:
       f->eax = fibonacci((int)(*(uintptr_t *)(f->esp + 4)));
