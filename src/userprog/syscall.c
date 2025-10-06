@@ -114,12 +114,22 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = wait((tid_t)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_CREATE:
+      check_user_ptr(f->esp + 4);
+      check_user_ptr(f->esp + 8);
+      f->eax = create((const char *)(*(uintptr_t *)(f->esp + 4)),
+                      (unsigned int)(*(uintptr_t *)(f->esp + 8)));
       break;
     case SYS_REMOVE:
+      check_user_ptr(f->esp + 4);
+      f->eax = remove((const char *)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_OPEN:
+      check_user_ptr(f->esp + 4);
+      f->eax = open((const char *)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_FILESIZE:
+      check_user_ptr(f->esp + 4);
+      f->eax = filesize((int)(*(uintptr_t *)(f->esp + 4)));
       break;
     case SYS_READ:
       check_user_ptr(f->esp + 4);
