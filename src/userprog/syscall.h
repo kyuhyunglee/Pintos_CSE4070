@@ -3,6 +3,7 @@
 #include "threads/thread.h"
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 void syscall_init (void);
 void halt(void);
@@ -22,5 +23,8 @@ void close(int fd);
 /* 새로운 syscall handling용 함수 */
 int fibonacci(int n);
 int max_of_four_int(int a, int b, int c, int d);
+
+/* file에 대한 동기화 핸들링용 락 */
+struct lock file_lock;
 
 #endif /* userprog/syscall.h */

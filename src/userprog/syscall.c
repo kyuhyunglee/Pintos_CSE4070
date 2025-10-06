@@ -12,6 +12,7 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
+  lock_init(&file_lock); // 전역 락 초기화
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -54,6 +55,16 @@ tid_t exec(const char *file) {
 
 int wait(tid_t pid) {
   return process_wait(pid);
+}
+
+bool create(const char *file, unsigned initial_size) {
+  if (file==NULL) return -1;
+  return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file) {
+  if (file==NULL) return -1;
+  return filesys_remove(file);
 }
 
 int read(int fd, void *buffer, unsigned int size) {
