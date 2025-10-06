@@ -384,7 +384,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     *(char **)(*esp) = argv_user_adder[i]; // argv[i]의 주소 저장
   }
 
-  char **argv_ptr = *esp; // argv의 주소 저장
+  char **argv_ptr = *esp;
   *esp -= sizeof(char **);
   *(char ***)(*esp) = argv_ptr; // argv의 주소 저장
   *esp -= sizeof(int);
