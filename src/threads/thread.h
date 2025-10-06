@@ -107,7 +107,9 @@ struct thread
     struct semaphore load_sema;
     struct semaphore exit_sema;
 
-    bool load_success;               
+    bool load_success;
+
+    struct file* exec_file;             /* Executing file. */      
 
     int exit_status;                    /* Process exit status. */
 #endif

@@ -78,7 +78,13 @@ start_process (void *file_name_)
   if (!success){
     thread_exit ();
   }
- 
+
+  /* 만약 세마포가 올라와 있다면 file을 close해준다 */
+  if (thread_current()->load_sema.value > 0 && thread_current()->exec_file != NULL){
+    file_close(thread_current()->exec_file); // exec file close
+    thread_current()->exec_file = NULL;
+  }
+  
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -266,6 +272,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", exec_name);
       goto done; 
     }
+  /* 동시에 해당 파일에 쓰지 못하게 막는다 */
+  t->exec_file = file;
+  file_deny_write(file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -403,7 +412,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  // 실행 중인 파일에는 쓰기 금지
   sema_up(&thread_current()->load_sema);
   //printf("sema up in load\n");
   return success;

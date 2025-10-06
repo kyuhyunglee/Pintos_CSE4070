@@ -18,13 +18,13 @@ int read(int fd, void *buffer, unsigned int size);
 int write(int fd, const void *buffer, unsigned int size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
-void close(int fd);
+int close(int fd);
 
 /* 새로운 syscall handling용 함수 */
 int fibonacci(int n);
 int max_of_four_int(int a, int b, int c, int d);
 
 /* file에 대한 동기화 핸들링용 락 */
-struct lock file_lock;
+extern struct lock file_lock;
 
 #endif /* userprog/syscall.h */

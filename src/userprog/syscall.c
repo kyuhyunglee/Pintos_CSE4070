@@ -8,6 +8,7 @@
 #include "lib/kernel/console.h"
 
 static void syscall_handler (struct intr_frame *);
+struct lock file_lock;
 
 void
 syscall_init (void) 
@@ -45,7 +46,7 @@ void exit(int status) {
 
 tid_t exec(const char *file) {
   check_user_ptr(file); // 왠지 모르지만 이게 있어야 exec_bad_ptr 통과 아래 iteration의 경우에는 왜 안되는지 모르겠음
-  if (file==NULL) return -1;
+  if (file==NULL) exit(-1);
   // 문자열 전체가 유효한지 검사
   for(int i=0; i<strlen(file); i++){
     check_user_ptr(file + i);
@@ -58,21 +59,19 @@ int wait(tid_t pid) {
 }
 
 bool create(const char *file, unsigned initial_size) {
-  if (file==NULL) return -1;
+  if (file==NULL) exit(-1);
   return filesys_create(file, initial_size);
 }
 
 bool remove(const char *file) {
-  if (file==NULL) return -1;
+  if (file==NULL) exit(-1);
   return filesys_remove(file);
 }
 
 int open(const char *file) {
-  if (file==NULL) return -1;
-  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
+  if (file==NULL) exit(-1);
   struct file *f = filesys_open(file);
   if (f == NULL) {
-    lock_release(&file_lock); // 락 해제
     return -1; // 파일 열기 실패 시 -1 반환
   }
   struct thread *cur = thread_current();
@@ -85,7 +84,6 @@ int open(const char *file) {
   }
   // 모든 fd가 사용 중인 경우
   file_close(f);
-  lock_release(&file_lock); // 락 해제
   return -1;
 }
 
@@ -169,16 +167,13 @@ unsigned tell(int fd) {
 
 int close(int fd) {
   if (fd < 3 || fd >= 128) return -1; // 유효하지 않은 fd
-  lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
   struct thread *cur = thread_current();
   struct file *f = cur->file_descriptor[fd];
   if (f == NULL){
-    lock_release(&file_lock); // 락 해제
     return -1; // 해당 fd가 열려있지 않음
   }
   file_close(f);
   cur->file_descriptor[fd] = NULL;
-  lock_release(&file_lock); // 락 해제
   return 0;
 }
 
