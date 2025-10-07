@@ -124,6 +124,7 @@ process_wait (tid_t child_tid UNUSED)
   //printf("sema down in wait\n");
   exit_status = child_thread->exit_status;
   list_remove(&child_thread->child_elem); // 자식 리스트에서 제거
+  palloc_free_page(child_thread); // 자식 스레드 구조체 메모리 해제
   return exit_status;
 }
 
@@ -134,16 +135,13 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  process_cleanup();
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
   sema_up(&cur->exit_sema);
   //printf("sema up in exit\n");
-  if (cur->exec_file != NULL){
-    file_close(cur->exec_file); // exec file close
-    cur->exec_file = NULL;
-  }
-  
+
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -586,4 +584,26 @@ struct thread* get_child_process_by_tid(tid_t child_tid) {
   }
   intr_enable();
   return NULL;
+}
+
+void process_cleanup(void) {
+  /* 현재 프로세스의 fd를 정리 */
+  struct thread *cur = thread_current();
+  for (int fd = 3; fd < 128; fd++) {
+    if (cur->file_descriptor[fd] != NULL) {
+      file_close(cur->file_descriptor[fd]);
+      cur->file_descriptor[fd] = NULL;
+    }
+  }
+  /* 실행 중이던 실행 파일의 쓰기 금지를 해제하고 닫는다. */
+    if (cur->exec_file != NULL) {
+        file_close(cur->exec_file);
+        cur->exec_file = NULL;
+    }
+
+    /* 자식 리스트에 남아있는 정보들을 정리한다. */
+    while (!list_empty(&cur->children)) {
+      struct list_elem *e = list_pop_front(&cur->children);
+      // 실제로 메모리 해제를 위해서는 list_entry로 struct thread를 얻어와 palloc_free_page 해야 함
+    }
 }
