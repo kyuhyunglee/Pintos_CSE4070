@@ -18,19 +18,25 @@ syscall_init (void)
 }
 
 /* To-do: 각 sys call case당 해당 주소가 유효한지 검사하는 함수 구현 */
+// ptr 부터 ptr+3 까지 블럭 단위로 검사
 static void check_user_ptr(const void *ptr) {
-  if (!is_user_vaddr(ptr) || ptr == NULL){
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
-  if (pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
-  if (ptr >= PHYS_BASE) {
-    //printf("invalid user pointer %p\n", ptr);
-    exit(-1);
-  }
+  if (ptr == NULL || !is_user_vaddr(ptr) || !is_user_vaddr(ptr + 3)) {
+        exit(-1);
+    }
+  for (int i = 0; i < 4; i++) {
+        if (pagedir_get_page(thread_current()->pagedir, ptr + i) == NULL) {
+            exit(-1);
+        }
+    }
+}
+
+static void check_user_buffer(const void *buffer, unsigned size) {
+    for (unsigned i = 0; i < size; i++) {
+        // 버퍼의 모든 바이트가 유효한지 검사
+        if (!is_user_vaddr(buffer + i) || pagedir_get_page(thread_current()->pagedir, buffer + i) == NULL) {
+            exit(-1);
+        }
+    }
 }
 
 void halt(void) {
@@ -59,6 +65,7 @@ int wait(tid_t pid) {
 }
 
 bool create(const char *file, unsigned initial_size) {
+  check_user_ptr(file);
   if (file==NULL) exit(-1);
   return filesys_create(file, initial_size);
 }
@@ -69,6 +76,7 @@ bool remove(const char *file) {
 }
 
 int open(const char *file) {
+  check_user_ptr(file);
   if (file==NULL) exit(-1);
   struct file *f = filesys_open(file);
   if (f == NULL) {
@@ -96,6 +104,7 @@ int filesize(int fd) {
 }
 
 int read(int fd, void *buffer, unsigned int size) {
+  check_user_buffer(buffer, size);
   if (fd < 0 || fd >= 128 || fd == 1) return -1;
   lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
   if (fd == 0) {
@@ -123,6 +132,7 @@ int read(int fd, void *buffer, unsigned int size) {
 }
 
 int write(int fd, const void *buffer, unsigned int size) {
+  check_user_buffer(buffer, size);
   if (fd < 0 || fd >= 128 || fd == 0) return -1;
   lock_acquire(&file_lock); // 파일 시스템 접근 시 락 획득
   if (fd == 1) {
