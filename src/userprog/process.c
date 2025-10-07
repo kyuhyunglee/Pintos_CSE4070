@@ -79,12 +79,13 @@ start_process (void *file_name_)
     thread_exit ();
   }
 
-  /* 만약 세마포가 올라와 있다면 file을 close해준다 */
+  /* 만약 세마포가 올라와 있다면 file을 close해준다 
   if (thread_current()->load_sema.value > 0 && thread_current()->exec_file != NULL){
     file_close(thread_current()->exec_file); // exec file close
     thread_current()->exec_file = NULL;
   }
-  
+  */
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -138,6 +139,11 @@ process_exit (void)
   pd = cur->pagedir;
   sema_up(&cur->exit_sema);
   //printf("sema up in exit\n");
+  if (cur->exec_file != NULL){
+    file_close(cur->exec_file); // exec file close
+    cur->exec_file = NULL;
+  }
+  
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set

@@ -150,6 +150,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  if(user) exit(-1); // user가 아닌 경우는 커널 버그이므로 kill()에서 처리
   
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
