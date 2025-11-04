@@ -373,7 +373,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   }
   //printf("argc : %d\n", argc);
 
-  // argv를 역순으로 stack에 저장
+  // argv 값을 역순으로 stack에 저장
   char *argv_user_adder[64];
   for (i = argc - 1; i >= 0; i--) {
     int token_len = strlen(argv[i]) + 1; // \t때문에 +1
