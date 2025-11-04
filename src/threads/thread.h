@@ -115,6 +115,7 @@ struct thread
 #endif
 
     /* Owned by thread.c. */
+    int64_t wakeup_tick;
     unsigned magic;                     /* Detects stack overflow. */
   };
 
