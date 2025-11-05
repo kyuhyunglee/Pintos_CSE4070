@@ -267,6 +267,25 @@ struct semaphore_elem
     struct semaphore semaphore;         /* This semaphore. */
   };
 
+  const bool sema_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
+    struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
+    struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
+
+    if (list_empty(&sema_a->semaphore.waiters))
+      return false;
+    if (list_empty(&sema_b->semaphore.waiters))
+      return true;
+
+    struct list_elem *max_a = list_max(&sema_a->semaphore.waiters, priority_less_func, NULL);
+    struct list_elem *max_b = list_max(&sema_b->semaphore.waiters, priority_less_func, NULL);
+
+    struct thread *thread_a = list_entry(max_a, struct thread, elem);
+    struct thread *thread_b = list_entry(max_b, struct thread, elem);
+    
+    return thread_a->priority < thread_b->priority;
+}
+
+
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
    code to receive the signal and act upon it. */
@@ -351,22 +370,4 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
-}
-
-bool sema_cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
-    struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
-    struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
-
-    if (list_empty(&sema_a->semaphore.waiters))
-      return false;
-    if (list_empty(&sema_b->semaphore.waiters))
-      return true;
-
-    struct list_elem *max_a = list_max(&sema_a->semaphore.waiters, priority_less_func, NULL);
-    struct list_elem *max_b = list_max(&sema_b->semaphore.waiters, priority_less_func, NULL);
-
-    struct thread *thread_a = list_entry(max_a, struct thread, elem);
-    struct thread *thread_b = list_entry(max_b, struct thread, elem);
-    
-    return thread_a->priority < thread_b->priority;
 }

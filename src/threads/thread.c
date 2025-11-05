@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -55,6 +56,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+static unsigned load_avg;      /* Load average */
 
 #ifndef USERPROG
 /* Project #3 */
@@ -105,7 +107,10 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
   initial_thread->tid = allocate_tid ();
+  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -133,26 +138,58 @@ thread_tick (void)
   struct thread *t = thread_current ();
 
   /* Update statistics. */
-  if (t == idle_thread)
+  if (t == idle_thread){
     idle_ticks++;
+  }
 #ifdef USERPROG
-  else if (t->pagedir != NULL)
+  else if (t->pagedir != NULL){
     user_ticks++;
+    t->recent_cpu = ADD_MIXED(t->recent_cpu, 1);
+  }
 #endif
-  else
+  else {
     kernel_ticks++;
+    t->recent_cpu = ADD_MIXED(t->recent_cpu, 1);
+  }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-  #ifndef USERPROG
+#ifndef USERPROG
   /* Project #3 */
-  //thread_wake_up();
 
-  if (thread_prior_aging == true)
+  if (thread_prior_aging == true){
     thread_aging();
-  #endif
+
+    if (!list_empty(&ready_list)) {
+      struct list_elem *max_elem = list_max (&ready_list, priority_less_func, NULL);
+      struct thread *max_thread = list_entry (max_elem, struct thread, elem);
+      if (max_thread->priority > t->priority) {
+        intr_yield_on_return ();
+      }
+    }
+  }
+#endif
+  if (thread_mlfqs == true) {
+    int64_t ticks = timer_ticks();
+    if (ticks % TIMER_FREQ == 0) {
+      load_avg_update();
+      thread_foreach(recent_cpu_update, NULL);
+    }
+
+    if (ticks % 4 == 0) {
+      thread_foreach(thread_recalc_priority, NULL);
+    }
+
+    if (!list_empty(&ready_list)) {
+      struct list_elem *max_elem = list_max (&ready_list, priority_less_func, NULL);
+      struct thread *max_thread = list_entry (max_elem, struct thread, elem);
+      if (max_thread->priority > t->priority) {
+        intr_yield_on_return ();
+      }
+  }
+  }
 }
 
 #ifndef USERPROG
@@ -164,15 +201,9 @@ void thread_aging(void) {
 
   for (e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
     struct thread *t = list_entry(e, struct thread, elem);
-    t->wait_ticks++;
-    if (t->wait_ticks >= AGING_PERIOD) {
-        if (t->priority < PRI_MAX) {
-            t->priority++;
-        }
-        /* * 우선순위를 올렸으므로 카운터를 리셋 
-         * (또는 t->wait_ticks % AGING_PERIOD == 0 으로 검사)
-         */
-        t->wait_ticks = 0; 
+    t->priority++;
+    if (t->priority > PRI_MAX) {
+      t->priority = PRI_MAX;
     }
   }
 }
@@ -399,35 +430,98 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+void thread_recalc_priority(struct thread *t, void *aux UNUSED) 
+{
+  fixed_t recent_cpu_div_4 = DIV_INT(t->recent_cpu, 4);
+
+  int recent_cpu_val = FIXED_TO_INT_ROUND(recent_cpu_div_4);
+
+  t->priority = PRI_MAX - recent_cpu_val - (t->nice * 2);
+
+  if (t->priority < PRI_MIN) {
+    t->priority = PRI_MIN;
+  } else if (t->priority > PRI_MAX) {
+    t->priority = PRI_MAX;
+  }
+}
+
+void load_avg_update(void) 
+{
+    int ready_threads = list_size(&ready_list);
+    if (thread_current() != idle_thread) {
+        ready_threads += 1;
+    }
+    load_avg = ADD_FIXED(DIV_FIXED(MULT_FIXED(INT_TO_FIXED(59), load_avg), INT_TO_FIXED(60)),
+                         DIV_FIXED(INT_TO_FIXED(ready_threads), INT_TO_FIXED(60)));
+}
+
+void recent_cpu_update(struct thread *t, void *aux UNUSED) 
+{
+    if (t == idle_thread) {
+        return;
+    }
+    fixed_t coeff = DIV_FIXED(MULT_FIXED(INT_TO_FIXED(2), load_avg),
+                             ADD_MIXED(MULT_FIXED(INT_TO_FIXED(2), load_avg), 1));
+    t->recent_cpu = ADD_MIXED(MULT_FIXED(coeff, t->recent_cpu), t->nice);
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  
+  struct thread *cur = thread_current();
+  cur->nice = nice;
+  thread_recalc_priority(cur, NULL);
+  bool need_yield = false;
+
+  if (!list_empty(&ready_list)) {
+      struct list_elem *max_elem = list_max (&ready_list, priority_less_func, NULL);
+      struct thread *max_thread = list_entry (max_elem, struct thread, elem);
+      if (max_thread->priority > cur->priority) {
+        need_yield = true;
+      }
+  }
+
+  intr_set_level (old_level);
+  if (need_yield) {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  int nice = thread_current()->nice;
+  intr_set_level (old_level);
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  int load_avg_100 = FIXED_TO_INT_ROUND(MULT_INT(load_avg, 100));
+  intr_set_level (old_level);
+  return load_avg_100;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  int recent_cpu_100 = FIXED_TO_INT_ROUND(MULT_INT(thread_current()->recent_cpu, 100));
+  intr_set_level (old_level);
+  return recent_cpu_100;
 }
 
 
@@ -517,6 +611,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->nice = running_thread()->nice;
+  t->recent_cpu = running_thread()->recent_cpu;
   t->magic = THREAD_MAGIC;
   for(int i=0; i<128; i++) t->file_descriptor[i] = NULL; // fd 테이블 초기화 (list_init 안됨)
 

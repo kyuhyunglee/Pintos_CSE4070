@@ -6,11 +6,11 @@
 #include <stdint.h>
 #include "threads/synch.h"
 #include "filesys/file.h"
+#include "threads/fixed-point.h"
 
 #ifndef USERPROG
 /* Project #3 */
 extern bool thread_prior_aging;
-void thread_aging(void);
 #endif
 
 /* States in a thread's life cycle. */
@@ -123,6 +123,10 @@ struct thread
     /* Owned by thread.c. */
     int64_t wakeup_tick;
     int wait_ticks;
+
+    int nice;
+    int recent_cpu;
+
     unsigned magic;                     /* Detects stack overflow. */
   };
 
@@ -157,10 +161,14 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
+void thread_recalc_priority(struct thread *t, void *aux);
+void load_avg_update(void);
+void recent_cpu_update(struct thread *t, void *aux);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void thread_aging(void);
 
 
 bool priority_less_func (const struct list_elem *a,
