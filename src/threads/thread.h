@@ -4,8 +4,14 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include <threads/synch.h>
+#include "threads/synch.h"
 #include "filesys/file.h"
+
+#ifndef USERPROG
+/* Project #3 */
+extern bool thread_prior_aging;
+void thread_aging(void);
+#endif
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -116,6 +122,7 @@ struct thread
 
     /* Owned by thread.c. */
     int64_t wakeup_tick;
+    int wait_ticks;
     unsigned magic;                     /* Detects stack overflow. */
   };
 
@@ -154,5 +161,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+
+bool priority_less_func (const struct list_elem *a,
+                    const struct list_elem *b,
+                    void *aux UNUSED);
 
 #endif /* threads/thread.h */

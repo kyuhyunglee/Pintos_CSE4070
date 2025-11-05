@@ -485,6 +485,7 @@ list_unique (struct list *list, struct list *duplicates,
       elem = next;
 }
 
+
 /* Returns the element in LIST with the largest value according
    to LESS given auxiliary data AUX.  If there is more than one
    maximum, returns the one that appears earlier in the list.  If

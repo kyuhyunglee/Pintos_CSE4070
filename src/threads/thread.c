@@ -20,6 +20,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+#define AGING_PERIOD TIME_SLICE
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -54,6 +56,11 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+#ifndef USERPROG
+/* Project #3 */
+bool thread_prior_aging;
+#endif
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -70,6 +77,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -137,7 +145,38 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+
+  #ifndef USERPROG
+  /* Project #3 */
+  //thread_wake_up();
+
+  if (thread_prior_aging == true)
+    thread_aging();
+  #endif
 }
+
+#ifndef USERPROG
+/* Project #3 */
+void thread_aging(void) {
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e)) {
+    struct thread *t = list_entry(e, struct thread, elem);
+    t->wait_ticks++;
+    if (t->wait_ticks >= AGING_PERIOD) {
+        if (t->priority < PRI_MAX) {
+            t->priority++;
+        }
+        /* * 우선순위를 올렸으므로 카운터를 리셋 
+         * (또는 t->wait_ticks % AGING_PERIOD == 0 으로 검사)
+         */
+        t->wait_ticks = 0; 
+    }
+  }
+}
+#endif
 
 /* Prints thread statistics. */
 void
@@ -200,7 +239,9 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  if (t->priority > thread_get_priority()) {
+      thread_yield();
+  }
   return tid;
 }
 
@@ -216,6 +257,10 @@ thread_block (void)
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
 
+  #ifndef USERPROG
+  /* Project #3 */
+  thread_current()->wait_ticks = 0;
+  #endif
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
 }
@@ -335,7 +380,16 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  enum intr_level old_level;
+  old_level = intr_disable ();
+
+  int old_priority = thread_current ()->priority;
   thread_current ()->priority = new_priority;
+  if (old_priority>new_priority) {
+    thread_yield();
+  }
+
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -502,8 +556,21 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  else {
+    struct list_elem *max_elem = list_max (&ready_list, priority_less_func, NULL);
+    list_remove (max_elem);
+    struct thread *next_t = list_entry (max_elem, struct thread, elem);
+    
+#ifndef USERPROG
+    /* Project 3: Priority Aging */
+    /* 스레드가 실행되므로 대기 틱 카운터를 리셋합니다. */
+    if (thread_prior_aging) {
+        next_t->wait_ticks = 0;
+    }
+#endif
+    
+    return next_t;
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -592,3 +659,15 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool
+priority_less_func (const struct list_elem *a,
+                    const struct list_elem *b,
+                    void *aux UNUSED)
+{
+  const struct thread *thread_a = list_entry (a, struct thread, elem);
+  const struct thread *thread_b = list_entry (b, struct thread, elem);
+
+  // 우선순위가 낮은 스레드가 앞에 있을 경우 참
+  return thread_a->priority < thread_b->priority;
+}
