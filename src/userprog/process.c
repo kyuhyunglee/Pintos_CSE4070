@@ -3,7 +3,6 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
@@ -14,10 +13,13 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "devices/timer.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -113,8 +115,6 @@ process_wait (tid_t child_tid UNUSED)
   thread_yield();
   timer_msleep(2000);
   */
-  struct thread *cur = thread_current();
-  struct list_elem *e;
   int exit_status;
 
   struct thread *child_thread = get_child_process_by_tid(child_tid);
@@ -136,6 +136,9 @@ process_exit (void)
   uint32_t *pd;
 
   process_cleanup();
+
+  vm_destroy(&cur->vm);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -261,6 +264,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
+  vm_init(&t->vm); // Supplemental Page Table 초기화
 
   // 이전에 파싱 필요
   char file_name_copy[64];
@@ -485,6 +490,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
+// VM 구현하면서 Lazy Load로 변경 vm_entry을 SPT에 추가만 한다
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
@@ -493,7 +499,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  file_seek (file, ofs);
+  //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -502,12 +508,27 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
+      /* Get a page of memory. 
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
+      */
 
-      /* Load this page. */
+      struct vm_entry *vme = malloc(sizeof(struct vm_entry));
+      if (vme == NULL)
+        return false;
+
+      vme->type = VM_BIN; // 우선 바이너리로 설정, 나중에 파일 매핑 등으로 확장 가능
+      vme->vaddr = upage;
+      vme->writable = writable;
+      vme->is_loaded = false;
+
+      vme->file = file;
+      vme->offset = ofs;
+      vme->read_bytes = page_read_bytes;
+      vme->zero_bytes = page_zero_bytes;
+
+      /* Load this page. 
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
@@ -515,17 +536,26 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
+       Add the page to the process's address space. 
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+      */
+
+      // SPT에 vm_entry 추가
+      struct thread *t = thread_current();
+      if (!insert_vme(&t->vm, vme)) {
+        free(vme);
+        return false;
+      }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += page_read_bytes;
     }
   return true;
 }
@@ -535,17 +565,51 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
+  struct frame *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = allocate_frame(PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+
+      struct vm_entry *vme = malloc(sizeof(struct vm_entry));
+      if (vme == NULL) {
+        free_frame(kpage);
+        return false;
+      }
+
+      vme->type = VM_ANON; // 스택은 익명 페이지
+      vme->vaddr = upage;
+      vme->writable = true;
+      vme->is_loaded = true; // 스택은 즉시 로드됨
+      vme->swap_slot = 0; // 스왑 슬롯은 아직 없음
+
+      kpage->vme = vme; // 프레임과 vm_entry 연결
+
+      if (!insert_vme(&thread_current()->vm, vme)) {
+        free(vme);
+        free_frame(kpage);
+        return false;
+      }
+
+      // 주의: install_page 내부에서 palloc을 다시 하지 않도록 수정하거나,
+      // pagedir_set_page를 직접 호출해야 함. 
+      // 기존 install_page는 palloc을 안 쓰지만 pagedir_set_page만 하므로 재사용 가능.
+      // install_page의 인자로 kpage->kpage (커널 주소)를 넘김.
+      
+      success = install_page (upage, kpage->kpage, true);
+
+      //success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
+      else {
+        delete_vme(&thread_current()->vm, vme);
+        // delete_vme는 free(vme)를 하겠지만 frame 해제는 별도로 챙겨야 할 수도 있음
+        // 여기서는 간단히 실패 처리
+        free_frame(kpage);
+      }
     }
   return success;
 }

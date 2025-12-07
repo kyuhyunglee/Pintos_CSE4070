@@ -7,6 +7,7 @@
 #include "threads/synch.h"
 #include "filesys/file.h"
 #include "threads/fixed-point.h"
+#include "lib/kernel/hash.h"
 
 #ifndef USERPROG
 /* Project #3 */
@@ -118,6 +119,11 @@ struct thread
     struct file* exec_file;             /* Executing file. */      
 
     int exit_status;                    /* Process exit status. */
+#endif
+
+#ifdef VM
+    /* Owned by vm/frame.c. */
+    struct hash vm;                     /* Supplemental Page Table */
 #endif
 
     /* Owned by thread.c. */

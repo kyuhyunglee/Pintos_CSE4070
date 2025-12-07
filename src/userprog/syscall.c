@@ -6,6 +6,9 @@
 #include "userprog/process.h"
 #include "devices/input.h"
 #include "lib/kernel/console.h"
+#include <string.h>             // <--- strlen 사용을 위해 추가
+#include "devices/shutdown.h"   // <--- shutdown_power_off 사용을 위해 추가
+#include "filesys/filesys.h"    // <--- filesys_create, remove, open 사용을 위해 추가
 
 static void syscall_handler (struct intr_frame *);
 struct lock file_lock;
