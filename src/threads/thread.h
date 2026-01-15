@@ -103,6 +103,9 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct file* file_descriptor[128];  /* fd for each thread */
 
+    struct list mmap_list;      /* mmap된 파일들의 리스트 (mm_entry 리스트) */
+    int next_mapid;             /* 다음에 발급할 mapid (1부터 시작) */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -111,19 +114,18 @@ struct thread
     struct list children;
     struct list_elem child_elem;
 
-    struct semaphore load_sema;
-    struct semaphore exit_sema;
-
-    bool load_success;
-
-    struct file* exec_file;             /* Executing file. */      
-
-    int exit_status;                    /* Process exit status. */
+    struct child_entry *pcb;
+   //struct semaphore load_sema;
+   //struct semaphore exit_sema;
+   //bool load_success;
+   struct file* exec_file;             /* Executing file. */      
+   int exit_status;                    /* Process exit status. */
 #endif
 
 #ifdef VM
     /* Owned by vm/frame.c. */
     struct hash vm;                     /* Supplemental Page Table */
+    void *rsp;
 #endif
 
     /* Owned by thread.c. */

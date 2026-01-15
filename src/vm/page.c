@@ -28,9 +28,17 @@ static void
 page_action (struct hash_elem *e, void *aux UNUSED)
 {
     struct vm_entry *vme = hash_entry (e, struct vm_entry, elem);
+    struct thread *t = thread_current();
 
-    // 로드된 상태라면 프레임 해제 등의 추가 작업이 필요할 수 있음 (추후 구현)
-    // 현재는 vm_entry 구조체 메모리만 해제
+    if (vme->is_loaded) {
+        // 1. 물리 프레임 해제 (palloc_free_page 포함)
+        free_frame_by_vaddr(vme->vaddr);
+        
+        // 매핑을 지워야 process_exit의 pagedir_destroy가 중복 해제를 하지 않음
+        pagedir_clear_page(t->pagedir, vme->vaddr); 
+    }
+    
+    // vme 해제
     free (vme);
 }
 

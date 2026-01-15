@@ -615,13 +615,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = running_thread()->recent_cpu;
   t->magic = THREAD_MAGIC;
   for(int i=0; i<128; i++) t->file_descriptor[i] = NULL; // fd 테이블 초기화 (list_init 안됨)
-
+  list_init (&t->mmap_list);
+  t->next_mapid = 1; 
+  
   #ifdef USERPROG
     list_init (&t->children);
+    t->pcb = NULL;
+    /*
     list_push_back(&(running_thread()->children), &t->child_elem);
     t->parent = running_thread();
     sema_init(&t->load_sema, 0);
     sema_init(&t->exit_sema, 0);
+    */
   #endif
 
   old_level = intr_disable ();
@@ -711,7 +716,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      //palloc_free_page (prev);
+      palloc_free_page (prev);
     }
 }
 
