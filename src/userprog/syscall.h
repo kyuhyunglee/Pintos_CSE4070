@@ -4,6 +4,7 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "vm/mmap.h"
 
 void syscall_init (void);
 void halt(void);
@@ -19,6 +20,8 @@ int write(int fd, const void *buffer, unsigned int size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 int close(int fd);
+mapid_t mmap(int fd, void *addr);
+void munmap(mapid_t mapid);
 
 /* 새로운 syscall handling용 함수 */
 int fibonacci(int n);

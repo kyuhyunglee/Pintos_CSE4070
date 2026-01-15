@@ -18,6 +18,7 @@ struct vm_entry {
     void *vaddr;          // 가상 주소
     bool writable;        // 쓰기 가능 여부
     bool is_loaded;       // 메모리에 로드되었는지 여부
+    bool pinned;          // 이 페이지가 고정되어 있는지 여부
 
     struct file *file ;   // 매핑된 파일 포인터
     off_t offset;        // 파일 내 오프셋
@@ -27,6 +28,7 @@ struct vm_entry {
     size_t swap_slot;    // 스왑 슬롯 인덱스
 
     struct hash_elem elem; // 해시 테이블 엘림
+    struct list_elem mm_elem; // Mmap 관리를 위한 리스트 엘리먼트
 };
 
 void vm_init (struct hash *vm);

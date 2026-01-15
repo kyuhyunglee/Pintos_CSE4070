@@ -130,7 +130,11 @@ sema_up (struct semaphore *sema)
   intr_set_level (old_level);
 
   if (need_yield) {
-    thread_yield();
+    if (intr_context ()) {
+        intr_yield_on_return (); // 인터럽트 핸들러 내부라면
+    } else {
+        thread_yield ();         // 일반 스레드 실행 중이라면
+    }
   }
 }
 

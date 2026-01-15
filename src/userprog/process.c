@@ -47,33 +47,79 @@ process_execute (const char *file_name)
   strlcpy(file_name_copy, file_name, sizeof(file_name_copy));
   char *exec_name = strtok_r(file_name_copy, " ", &save_ptr);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (exec_name, PRI_DEFAULT, start_process, fn_copy);
-  struct thread *child = get_child_process_by_tid(tid);
-  sema_down(&child->load_sema); // 자식의 load가 끝날 때까지 부모는 대기
-  //printf("sema down in execute\n");
-  if (child->load_success == false) return -1;
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  struct child_entry *entry = malloc(sizeof(struct child_entry));
+  if (entry == NULL) {
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  }
+
+  entry->tid = TID_ERROR; // 나중에 설정
+  entry->exit_status = 0; // 초기화 확인
+  entry->load_success = false;
+  sema_init(&entry->load_sema, 0);
+  sema_init(&entry->exit_sema, 0);
+
+  struct execute_args *args = malloc(sizeof(struct execute_args));
+  if (args == NULL) {
+    free(entry);
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  }
+  args->file_name = fn_copy;
+  args->entry = entry;
+
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, args);
+    
+  if (tid == TID_ERROR) {
+    free(entry);
+    free(args);
+    palloc_free_page (fn_copy);
+    return TID_ERROR;
+  }
+
+  entry->tid = tid;
+  list_push_back(&thread_current()->children, &entry->elem);
+
+  sema_down(&entry->load_sema);
+    
+  if (entry->load_success == false) {
+    // 로드 실패 시 entry는 process_wait에서 해제할 수 있도록 두거나,
+    // 여기서 리스트에서 제거하고 해제해야 합니다.
+    // 핀토스 테스트 케이스상 보통 wait(-1)을 호출하므로 일단 둡니다.
+    // 또는 여기서 정리:
+    list_remove(&entry->elem);
+    free(entry);
+    return -1;
+  }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *args_)
 {
-  char *file_name = file_name_;
+  struct execute_args *args = (struct execute_args *)args_;
+  char *file_name = args->file_name;
+  struct child_entry *entry = args->entry;
+
+  struct thread *t = thread_current();
+  t->pcb = entry;
+
+  free(args);
+
   struct intr_frame if_;
   bool success;
-
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  thread_current()->load_success = success;
+
+  t->pcb->load_success = success;
+  sema_up(&t->pcb->load_sema);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -110,21 +156,33 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  // 근본적인 해결책은 아님
-  /*
-  thread_yield();
-  timer_msleep(2000);
-  */
-  int exit_status;
+  struct thread *cur = thread_current();
+  struct list_elem *e;
+  struct child_entry *child_entry = NULL;
 
-  struct thread *child_thread = get_child_process_by_tid(child_tid);
-  if (child_thread == NULL) return -1; // 유효하지 않은 tid
+  /*  자식 리스트에서 tid에 해당하는 entry 찾기 */
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); e = list_next(e)) {
+    struct child_entry *entry = list_entry(e, struct child_entry, elem);
+    if (entry->tid == child_tid) {
+      child_entry = entry;
+      break;
+    }
+  }
 
-  sema_down(&child_thread->exit_sema); // 자식이 exit할 때까지 대기
-  //printf("sema down in wait\n");
-  exit_status = child_thread->exit_status;
-  list_remove(&child_thread->child_elem); // 자식 리스트에서 제거
-  palloc_free_page(child_thread); // 자식 스레드 구조체 메모리 해제
+  if (child_entry == NULL) return -1; // 해당 자식이 없음
+
+  /* 종료 대기 */
+  sema_down(&child_entry->exit_sema);
+    
+  int exit_status = child_entry->exit_status;
+    
+  /* 리스트에서 제거 및 entry 메모리 해제 */
+  list_remove(&child_entry->elem);
+  free(child_entry); 
+    
+  /* 주의: palloc_free_page(child_thread)는 절대 하지 않음! 
+       스레드 스택은 스레드가 완전히 죽은 뒤 스케줄러가 해제함. */
+
   return exit_status;
 }
 
@@ -137,12 +195,15 @@ process_exit (void)
 
   process_cleanup();
 
-  vm_destroy(&cur->vm);
+  if (cur->vm.buckets) vm_destroy(&cur->vm);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  sema_up(&cur->exit_sema);
+  if (cur->pcb != NULL) {
+    cur->pcb->exit_status = cur->exit_status; // thread_exit 등에서 미리 설정되었다고 가정
+    sema_up(&cur->pcb->exit_sema);
+  }
   //printf("sema up in exit\n");
 
   if (pd != NULL) 
@@ -362,6 +423,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     // 비정상적인 스택 형성 시에 done으로 이동
     goto done;
 
+  //printf("DEBUG: setup_stack success. Starting argument passing.\n");
   // 위에서 정상적으로 stack 이 설정되고, 이제 stack_frame 작성
   char *argv[64];
   int argc = 0;
@@ -411,7 +473,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *(void **)(*esp) = NULL; // return address 0
 
   //디버깅용 hex_dump
-  //printf("hex dump in load\n\n");
+  //printf("DEBUG: Argument passing done. Hex dump:\n");
   //hex_dump(*esp, *esp, 100, true);
   
   /* Start address. */
@@ -422,7 +484,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   // 실행 중인 파일에는 쓰기 금지
-  sema_up(&thread_current()->load_sema);
+  //printf("DEBUG: load function finished. success = %d\n", success);
+
+  if (thread_current()->pcb != NULL) {
+      sema_up(&thread_current()->pcb->load_sema);
+  }
   //printf("sema up in load\n");
   return success;
 }
@@ -527,6 +593,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       vme->offset = ofs;
       vme->read_bytes = page_read_bytes;
       vme->zero_bytes = page_zero_bytes;
+      vme->swap_slot = 0;
 
       /* Load this page. 
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
@@ -570,6 +637,11 @@ setup_stack (void **esp)
 
   //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   kpage = allocate_frame(PAL_USER | PAL_ZERO);
+  if (kpage == NULL) {
+    printf("DEBUG: setup_stack failed at allocate_frame\n"); // 디버깅
+    return false;
+  }
+
   if (kpage != NULL) 
     {
       uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
@@ -585,10 +657,12 @@ setup_stack (void **esp)
       vme->writable = true;
       vme->is_loaded = true; // 스택은 즉시 로드됨
       vme->swap_slot = 0; // 스왑 슬롯은 아직 없음
+      vme->pinned = true;
 
       kpage->vme = vme; // 프레임과 vm_entry 연결
 
       if (!insert_vme(&thread_current()->vm, vme)) {
+        printf("DEBUG: setup_stack failed at insert_vme\n");
         free(vme);
         free_frame(kpage);
         return false;
@@ -602,9 +676,12 @@ setup_stack (void **esp)
       success = install_page (upage, kpage->kpage, true);
 
       //success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success){
+        vme->pinned = true;
         *esp = PHYS_BASE;
+      }
       else {
+        printf("DEBUG: setup_stack failed at install_page\n");
         delete_vme(&thread_current()->vm, vme);
         // delete_vme는 free(vme)를 하겠지만 frame 해제는 별도로 챙겨야 할 수도 있음
         // 여기서는 간단히 실패 처리
@@ -667,7 +744,8 @@ void process_cleanup(void) {
 
     /* 자식 리스트에 남아있는 정보들을 정리한다. */
     while (!list_empty(&cur->children)) {
-      struct list_elem *e = list_pop_front(&cur->children);
-      // 실제로 메모리 해제를 위해서는 list_entry로 struct thread를 얻어와 palloc_free_page 해야 함
+        struct list_elem *e = list_pop_front(&cur->children);
+        struct child_entry *entry = list_entry(e, struct child_entry, elem);
+        free(entry); // 자식 프로세스 정보 구조체 해제
     }
 }
